@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Assistente do Aluno</title>
+<style>
+  :root {
+    --header: #075e54;
+    --bg: #e5ddd5;
+    --bubble-me: #dcf8c6;
+    --bubble-them: #ffffff;
+    box-sizing: border-box;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    height: 100%; overflow: hidden;
+  }
+  #header {
+    background: var(--header); color: #fff;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+    display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  }
+  #avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    background: #128c7e; display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  #header-info .name { font-weight: bold; font-size: 16px; }
+  #header-info .status { font-size: 12px; opacity: 0.8; }
+
+  #messages { flex: 1; overflow-y: auto; padding: 14px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .bubble {
+    max-width: 80%; padding: 8px 10px; border-radius: 8px; font-size: 14.5px;
+    line-height: 1.4; box-shadow: 0 1px 1px rgba(0,0,0,0.1); white-space: pre-wrap; word-wrap: break-word;
+  }
+  .me { align-self: flex-end; background: var(--bubble-me); border-top-right-radius: 0; }
+  .them { align-self: flex-start; background: var(--bubble-them); border-top-left-radius: 0; }
+  .time { font-size: 10px; color: #667; text-align: right; margin-top: 3px; }
+
+  #quickReplies {
+    display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px 0;
+    flex-shrink: 0; -webkit-overflow-scrolling: touch;
+  }
+  .chip {
+    background: #fff; border: 1px solid var(--header); color: var(--header);
+    border-radius: 16px; padding: 6px 12px; font-size: 13px; white-space: nowrap;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .chip:active { background: #e5f4f2; }
+
+  #inputbar {
+    flex-shrink: 0; background: #f0f0f0;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    display: flex; gap: 8px; align-items: center;
+  }
+  #msgInput { flex: 1; border: none; border-radius: 20px; padding: 10px 14px; font-size: 15px; outline: none; }
+  #sendBtn {
+    background: var(--header); color: #fff; border: none; border-radius: 50%;
+    width: 42px; height: 42px; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .typing {
+    align-self: flex-start; background: var(--bubble-them);
+    padding: 10px 14px; border-radius: 8px; border-top-left-radius: 0;
+    display: flex; gap: 4px;
+  }
+  .typing span { width: 6px; height: 6px; border-radius: 50%; background: #999; animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+</style>
+</head>
+<body>
+  <div id="header">
+    <div id="avatar">🎓</div>
+    <div id="header-info">
+      <div class="name">Assistente do Aluno</div>
+      <div class="status">online</div>
+    </div>
+  </div>
+
+  <div id="messages"></div>
+  <div id="quickReplies"></div>
+
+  <div id="inputbar">
+    <input type="text" id="msgInput" placeholder="Digite sua dúvida" autocomplete="off">
+    <button id="sendBtn">➤</button>
+  </div>
+
+<script>
+/* ===================== BASE DE CONHECIMENTO =====================
+   Para personalizar: edite ou adicione itens aqui.
+   "gatilhos": palavras que, se aparecerem na pergunta, disparam essa resposta.
+   "resposta": o que o assistente vai responder.
+=================================================================== */
+const baseDeConhecimento = [
+  {
+    gatilhos: ['horário', 'horario', 'aula', 'que horas'],
+    resposta: 'As aulas começam às 8h e terminam às 12h, de segunda a sexta. 📅'
+  },
+  {
+    gatilhos: ['prova', 'avaliação', 'avaliacao', 'exame', 'teste'],
+    resposta: 'As datas de provas ficam disponíveis no calendário escolar. Consulte a secretaria ou o mural da sala para confirmar. 📝'
+  },
+  {
+    gatilhos: ['matrícula', 'matricula', 'inscrição', 'inscricao'],
+    resposta: 'Para matrícula ou renovação, procure a secretaria acadêmica com seus documentos pessoais e comprovante de residência. 📋'
+  },
+  {
+    gatilhos: ['boletim', 'nota', 'notas', 'resultado'],
+    resposta: 'As notas são divulgadas pelo sistema acadêmico após o fechamento de cada bimestre. 📊'
+  },
+  {
+    gatilhos: ['contato', 'telefone', 'email', 'e-mail', 'falar com'],
+    resposta: 'Você pode entrar em contato com a secretaria pelo telefone ou e-mail institucional da escola. ☎️'
+  },
+  {
+    gatilhos: ['material', 'livro', 'apostila', 'lista'],
+    resposta: 'A lista de materiais é divulgada no início do ano letivo e fica disponível com o professor responsável. 📚'
+  },
+  {
+    gatilhos: ['falta', 'faltei', 'ausência', 'ausencia', 'justificar'],
+    resposta: 'Faltas devem ser justificadas na secretaria em até 48h, com atestado ou justificativa por escrito. 🗒️'
+  },
+  {
+    gatilhos: ['bom dia'],
+    resposta: 'Bom dia! ☀️ Como posso ajudar?'
+  },
+  {
+    gatilhos: ['boa tarde'],
+    resposta: 'Boa tarde! 🌤️ Em que posso ajudar?'
+  },
+  {
+    gatilhos: ['boa noite'],
+    resposta: 'Boa noite! 🌙 Precisa de alguma informação?'
+  },
+  {
+    gatilhos: ['obrigad'],
+    resposta: 'Disponha! Se precisar de mais alguma coisa, é só chamar. 😊'
+  },
+  {
+    gatilhos: ['oi', 'olá', 'ola', 'ei'],
+    resposta: 'Olá! Sou o assistente virtual dos alunos. Pergunte sobre horários, provas, matrícula, materiais, faltas ou matemática. 🎓'
+  },
+
+  /* ---------- MATEMÁTICA ---------- */
+  {
+    gatilhos: ['fração', 'fracao', 'frações', 'fracoes'],
+    resposta: 'Frações representam uma parte de um todo (numerador/denominador). Para somar ou subtrair, iguale os denominadores. Para multiplicar, multiplique numerador com numerador e denominador com denominador. Para dividir, multiplique pela fração invertida (dividir por a/b = multiplicar por b/a). ➗'
+  },
+  {
+    gatilhos: ['porcentagem', 'porcento', '%'],
+    resposta: 'Porcentagem é uma fração de base 100. Para calcular x% de um valor V: (x/100) × V. Exemplo: 20% de 50 = (20/100) × 50 = 10. 💯'
+  },
+  {
+    gatilhos: ['regra de três'],
+    resposta: 'Regra de três resolve proporções entre grandezas. Para regra de três simples: monte a proporção a/b = c/x e resolva x = (b × c) / a. Verifique se as grandezas são diretamente ou inversamente proporcionais antes de montar. ⚖️'
+  },
+  {
+    gatilhos: ['equação de primeiro grau', 'equacao de primeiro grau', 'equação do primeiro grau', '1º grau', '1 grau'],
+    resposta: 'Equação de 1º grau tem a forma ax + b = 0. Para resolver: isole x → x = -b/a. Exemplo: 2x + 4 = 0 → x = -4/2 = -2. ✏️'
+  },
+  {
+    gatilhos: ['equação de segundo grau', 'equacao de segundo grau', 'bhaskara', '2º grau', '2 grau'],
+    resposta: 'Equação de 2º grau: ax² + bx + c = 0. Use Bhaskara: Δ = b² - 4ac, depois x = (-b ± √Δ) / (2a). Se Δ > 0: duas raízes reais; Δ = 0: uma raiz; Δ < 0: nenhuma raiz real. 📐'
+  },
+  {
+    gatilhos: ['mmc', 'mínimo múltiplo comum', 'minimo multiplo comum'],
+    resposta: 'MMC (mínimo múltiplo comum) é o menor número que é múltiplo de dois ou mais números ao mesmo tempo. Calcule fatorando cada número em primos e multiplicando os fatores comuns e não comuns com maior expoente. Exemplo: MMC(4,6) = 12. 🔢'
+  },
+  {
+    gatilhos: ['mdc', 'máximo divisor comum', 'maximo divisor comum'],
+    resposta: 'MDC (máximo divisor comum) é o maior número que divide dois ou mais números exatamente. Fatore os números e multiplique os fatores primos comuns com o menor expoente. Exemplo: MDC(12,18) = 6. 🔢'
+  },
+  {
+    gatilhos: ['área', 'area do', 'área de', 'area de'],
+    resposta: 'Principais fórmulas de área: Quadrado = lado². Retângulo = base × altura. Triângulo = (base × altura) / 2. Círculo = π × raio². Trapézio = ((base maior + base menor) × altura) / 2. 📏'
+  },
+  {
+    gatilhos: ['perímetro', 'perimetro'],
+    resposta: 'Perímetro é a soma de todos os lados de uma figura. Quadrado = 4 × lado. Retângulo = 2 × (base + altura). Círculo (circunferência) = 2 × π × raio. 📐'
+  },
+  {
+    gatilhos: ['pitágoras', 'pitagoras', 'teorema de pitágoras'],
+    resposta: 'O Teorema de Pitágoras vale para triângulos retângulos: a² = b² + c², onde "a" é a hipotenusa (lado maior, oposto ao ângulo reto) e "b" e "c" são os catetos. 📐'
+  },
+  {
+    gatilhos: ['potência', 'potencia', 'expoente'],
+    resposta: 'Potenciação: aⁿ significa multiplicar "a" por si mesmo "n" vezes. Regras principais: aᵐ × aⁿ = aᵐ⁺ⁿ; aᵐ ÷ aⁿ = aᵐ⁻ⁿ; (aᵐ)ⁿ = aᵐˣⁿ; a⁰ = 1 (a ≠ 0). ⬆️'
+  },
+  {
+    gatilhos: ['raiz quadrada', 'raiz cúbica', 'radiciação', 'radiciacao'],
+    resposta: 'Raiz é a operação inversa da potenciação. √a = b significa que b² = a. Exemplo: √16 = 4, porque 4² = 16. Raízes de números negativos não existem nos reais (para índice par). √️'
+  },
+  {
+    gatilhos: ['trigonometria', 'seno', 'cosseno', 'tangente'],
+    resposta: 'No triângulo retângulo: seno = cateto oposto / hipotenusa. cosseno = cateto adjacente / hipotenusa. tangente = cateto oposto / cateto adjacente (ou seno/cosseno). Valores notáveis: sen 30°=1/2, sen 45°=√2/2, sen 60°=√3/2. 📐'
+  },
+  {
+    gatilhos: ['plano cartesiano', 'coordenadas', 'eixo x', 'eixo y'],
+    resposta: 'O plano cartesiano tem dois eixos: x (horizontal) e y (vertical), que se cruzam na origem (0,0). Cada ponto é escrito como (x, y). Os quadrantes são numerados I, II, III e IV, sentido anti-horário a partir do canto superior direito. 🗺️'
+  },
+  {
+    gatilhos: ['função', 'funcao', 'função afim', 'funcao afim', 'função do 1º grau'],
+    resposta: 'Função afim (1º grau): f(x) = ax + b. "a" é o coeficiente angular (inclinação da reta) e "b" é onde a reta corta o eixo y. Se a > 0, a função é crescente; se a < 0, é decrescente. 📈'
+  },
+  {
+    gatilhos: ['função quadrática', 'funcao quadratica', 'parábola', 'parabola'],
+    resposta: 'Função quadrática (2º grau): f(x) = ax² + bx + c, com gráfico em forma de parábola. Se a > 0, a parábola abre para cima (ponto de mínimo); se a < 0, abre para baixo (ponto de máximo). O vértice fica em x = -b/(2a). 📉'
+  },
+  {
+    gatilhos: ['progressão aritmética', 'progressao aritmetica', ' pa '],
+    resposta: 'Progressão Aritmética (PA): sequência em que cada termo é obtido somando uma razão (r) constante ao anterior. Termo geral: aₙ = a₁ + (n-1) × r. Soma dos termos: Sₙ = (a₁ + aₙ) × n / 2. ➕'
+  },
+  {
+    gatilhos: ['progressão geométrica', 'progressao geometrica', ' pg '],
+    resposta: 'Progressão Geométrica (PG): sequência em que cada termo é obtido multiplicando o anterior por uma razão (q) constante. Termo geral: aₙ = a₁ × qⁿ⁻¹. ✖️'
+  },
+  {
+    gatilhos: ['probabilidade'],
+    resposta: 'Probabilidade de um evento = número de casos favoráveis / número de casos possíveis. O resultado sempre fica entre 0 (impossível) e 1 (certeza), podendo ser expresso também em porcentagem. 🎲'
+  },
+  {
+    gatilhos: ['média', 'media aritmetica', 'média aritmética'],
+    resposta: 'Média aritmética = soma de todos os valores dividida pela quantidade de valores. Exemplo: média de 4, 6 e 8 = (4+6+8)/3 = 6. 📊'
+  },
+  {
+    gatilhos: ['múltiplo', 'multiplo', 'divisor', 'divisibilidade'],
+    resposta: 'Múltiplos de um número são obtidos multiplicando-o por 1, 2, 3... (ex.: múltiplos de 5: 5,10,15...). Divisores são números que dividem outro exatamente, sem resto (ex.: divisores de 12: 1,2,3,4,6,12). ➗'
+  },
+  {
+    gatilhos: ['número primo', 'numero primo', 'primos'],
+    resposta: 'Número primo é aquele que só pode ser dividido exatamente por 1 e por ele mesmo, e é maior que 1. Exemplos: 2, 3, 5, 7, 11, 13. O número 1 não é primo, e o 2 é o único primo par. 🔢'
+  },
+  {
+    gatilhos: ['matemática', 'matematica'],
+    resposta: 'Posso ajudar com: frações, porcentagem, regra de três, equações (1º e 2º grau), MMC/MDC, área, perímetro, Pitágoras, potência, raiz, trigonometria, plano cartesiano, funções, PA/PG, probabilidade, média e números primos. É só perguntar! ➗📐📊'
+  },
+];
+
+/* ---------- LIMITE DE TESTE GRÁTIS ---------- */
+const LIMITE_GRATIS = 3;
+const CHAVE_PIX = 'ls1694976@gmail.com';
+const VALOR_MENSALIDADE = 'R$ 10,00';
+const STORAGE_KEY = 'assistenteAluno_perguntasUsadas';
+
+function getPerguntasUsadas() {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    return v ? parseInt(v, 10) : 0;
+  } catch (e) { return 0; }
+}
+function setPerguntasUsadas(n) {
+  try { localStorage.setItem(STORAGE_KEY, String(n)); } catch (e) {}
+}
+let perguntasUsadas = getPerguntasUsadas();
+let bloqueado = perguntasUsadas >= LIMITE_GRATIS;
+
+function mensagemBloqueio() {
+  return `Seu teste grátis acabou (${LIMITE_GRATIS} perguntas). 🔒\n\nPara continuar usando, assine por ${VALOR_MENSALIDADE}/mês.\n\nChave Pix: ${CHAVE_PIX}\n\nApós o pagamento, entre em contato para liberar seu acesso.`;
+}
+/* ============================================= */
+
+const respostaPadrao = 'Ainda não tenho essa informação programada. Tente perguntar sobre horários, provas, matrícula, materiais, boletim ou faltas — ou procure a secretaria para mais detalhes. 🙂';
+
+const sugestoes = ['Como calcular porcentagem', 'Equação de segundo grau', 'Área do círculo', 'Horário das aulas'];
+
+/* ================================================================= */
+
+const messagesEl = document.getElementById('messages');
+const input = document.getElementById('msgInput');
+const sendBtn = document.getElementById('sendBtn');
+const quickRepliesEl = document.getElementById('quickReplies');
+
+function timeNow() {
+  const d = new Date();
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+function addBubble(text, who) {
+  const b = document.createElement('div');
+  b.className = 'bubble ' + who;
+  b.textContent = text;
+  const t = document.createElement('div');
+  t.className = 'time';
+  t.textContent = timeNow();
+  b.appendChild(t);
+  messagesEl.appendChild(b);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function showTyping() {
+  const el = document.createElement('div');
+  el.className = 'typing';
+  el.id = 'typingIndicator';
+  el.innerHTML = '<span></span><span></span><span></span>';
+  messagesEl.appendChild(el);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+function hideTyping() {
+  const el = document.getElementById('typingIndicator');
+  if (el) el.remove();
+}
+
+function tentarCalculadora(msg) {
+  const m = msg.trim().toLowerCase();
+
+  if (m.includes('valor de pi') || m === 'pi' || m === 'π') {
+    return 'O valor de π (pi) é aproximadamente 3,14159265... É a razão entre o comprimento de uma circunferência e seu diâmetro. 🥧';
+  }
+
+  // troca "pi" por seu valor numérico dentro de expressões
+  let expr = m.replace(/\bpi\b|π/g, '3.14159265');
+
+  // só aceita números, espaços e os operadores básicos + - * / ( ) . ,
+  if (/^[0-9+\-*/(). ,%]+$/.test(expr) && /[0-9]/.test(expr) && /[+\-*/]/.test(expr)) {
+    try {
+      expr = expr.replace(/,/g, '.').replace(/%/g, '/100');
+      // eslint-disable-next-line no-new-func
+      const resultado = Function('"use strict"; return (' + expr + ')')();
+      if (typeof resultado === 'number' && isFinite(resultado)) {
+        const arred = Math.round(resultado * 1e6) / 1e6;
+        return `${msg.trim()} = ${arred} 🧮`;
+      }
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function getReply(msg) {
+  const calc = tentarCalculadora(msg);
+  if (calc) return calc;
+
+  const m = msg.trim().toLowerCase();
+  for (const item of baseDeConhecimento) {
+    if (item.gatilhos.some(g => m.includes(g))) return item.resposta;
+  }
+  return respostaPadrao;
+}
+
+function sendText(text) {
+  if (!text) return;
+  addBubble(text, 'me');
+  input.value = '';
+
+  if (bloqueado) {
+    showTyping();
+    setTimeout(() => {
+      hideTyping();
+      addBubble(mensagemBloqueio(), 'them');
+    }, 400);
+    return;
+  }
+
+  showTyping();
+  setTimeout(() => {
+    hideTyping();
+    addBubble(getReply(text), 'them');
+    perguntasUsadas++;
+    setPerguntasUsadas(perguntasUsadas);
+    if (perguntasUsadas >= LIMITE_GRATIS) {
+      bloqueado = true;
+      setTimeout(() => addBubble(mensagemBloqueio(), 'them'), 600);
+    }
+  }, 500 + Math.random() * 500);
+}
+
+function sendMessage() {
+  sendText(input.value.trim());
+}
+
+sendBtn.addEventListener('click', sendMessage);
+input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+
+sugestoes.forEach(s => {
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  chip.textContent = s;
+  chip.addEventListener('click', () => sendText(s));
+  quickRepliesEl.appendChild(chip);
+});
+
+if (bloqueado) {
+  addBubble(mensagemBloqueio(), 'them');
+} else {
+  addBubble('Olá! Sou o assistente virtual dos alunos. Pergunte sobre horários, provas, matrícula, materiais, faltas ou matemática (frações, equações, área, Pitágoras e muito mais). 🎓', 'them');
+}
+</script>
+</body>
+</html>
